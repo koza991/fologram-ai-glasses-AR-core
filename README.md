@@ -1,154 +1,154 @@
 # Fologram on Android AR Glasses (without official ARCore support)
 
-在 **INMO Air3** 等安卓一体式 AR 眼镜上运行 [Fologram](https://fologram.com)（Rhino / Grasshopper 的混合现实查看器），包括**设备不在 Google ARCore 支持名单时**的调整方法。
+**English** | [简体中文](README.zh-CN.md)
 
-> English summary: How to sideload Fologram onto Android-based AR glasses that Google Play marks as "not compatible", why its AR features fail (no ARCore device profile), and a reversible, root-based workaround that lets ARCore start by temporarily presenting the device as an ARCore-certified model. Tested on INMO Air3 (Android 14, Snapdragon "parrot" platform).
-
----
-
-## ⚠️ 免责声明
-
-- 本仓库**不包含**任何 Fologram 或 Google ARCore 的安装包，请自行从合法渠道获取。
-- 修改设备型号属性属于非官方用法，可能违反相关服务条款，可能导致追踪精度下降、部分系统功能异常或影响保修。**风险自负。**
-- 本方法只做**临时**修改，重启设备即可完全恢复，不改动系统分区。
+Run [Fologram](https://fologram.com) — the mixed-reality viewer for Rhino / Grasshopper — on Android-based standalone AR glasses such as the **INMO Air3**, including a workaround for devices that are **not on Google's ARCore supported-devices list**.
 
 ---
 
-## 1. 为什么 Google Play 显示"设备不支持"
+## ⚠️ Disclaimer
 
-Fologram 安卓版的清单文件把以下两项设为**必需**：
+- This repository **does not contain** any Fologram or Google ARCore packages. Obtain them yourself from legitimate sources.
+- Changing device model properties is unofficial. It may conflict with service terms, reduce tracking accuracy, break some system features, or affect your warranty. **Use at your own risk.**
+- The method here is **temporary only**: a reboot fully restores the device. No system partition is modified.
 
-- `android.hardware.camera.ar`（只有通过 Google ARCore 认证的设备才会声明）
-- `com.google.ar.core`（Google Play Services for AR）
+---
 
-大多数 AR 眼镜没有通过 ARCore 认证，所以 Play 商店直接隐藏或拒绝安装。
+## 1. Why Google Play says "not compatible"
 
-## 2. 安装 Fologram（无需 root）
+Fologram's Android manifest marks two things as **required**:
 
-需要：电脑安装 [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools)（adb），眼镜打开 **USB 调试**。
+- `android.hardware.camera.ar` (declared only by devices certified for Google ARCore)
+- `com.google.ar.core` (Google Play Services for AR)
 
-1. 自行获取 Fologram 安卓版安装包。最新版通常是 **XAPK**（基础包 + `config.arm64_v8a` 分包）。
-2. XAPK 实际是 zip，解压后用 `install-multiple` 一起安装：
+Most AR glasses are not ARCore-certified, so the Play Store hides the app or refuses to install it.
+
+## 2. Install Fologram (no root needed)
+
+Requirements: [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) (adb) on your computer, and **USB debugging** enabled on the glasses.
+
+1. Get the Fologram Android package yourself. Recent versions are usually an **XAPK** (base APK + a `config.arm64_v8a` split).
+2. An XAPK is just a zip. Extract it and install all APKs together with `install-multiple`:
 
 ```bash
 adb install-multiple -r -g com.fologram.android.apk config.arm64_v8a.apk
 ```
 
-或者用 [`scripts/install_fologram.sh`](scripts/install_fologram.sh)：
+Or use [`scripts/install_fologram.sh`](scripts/install_fologram.sh):
 
 ```bash
 ./scripts/install_fologram.sh path/to/Fologram.xapk
 ```
 
-3. 安装 **Google Play Services for AR**（`com.google.ar.core`，选与设备匹配的 arm64 / Android 版本的官方签名包）：
+3. Install **Google Play Services for AR** (`com.google.ar.core`). Pick an officially signed build that matches your device's architecture (arm64) and Android version:
 
 ```bash
 adb install -r -g google-play-services-for-ar.apk
 ```
 
-到这一步，Fologram 可以打开、登录，但**扫码 / 放置模型等 AR 功能不能用**。
+At this point Fologram opens and you can sign in, but **AR features (QR scanning, placing models) do not work yet**.
 
-## 3. 诊断：为什么 AR 不工作
+## 3. Diagnose why AR doesn't work
 
-运行 [`scripts/diag_arcore.sh`](scripts/diag_arcore.sh)（需要 Fologram 处于打开状态）：
+Run [`scripts/diag_arcore.sh`](scripts/diag_arcore.sh) with Fologram open:
 
 ```bash
 adb push scripts/diag_arcore.sh /data/local/tmp/ && adb shell sh /data/local/tmp/diag_arcore.sh
 ```
 
-常见现象及含义：
+What the log signatures mean:
 
-| 日志特征 | 含义 |
+| Log signature | Meaning |
 |---|---|
-| ARCore 反复弹出 `ProfileDownloadActivity` 后立刻关闭 | Google 没有该型号的设备配置（校准参数），下载失败 |
-| `session_lite_c_api.cc ... session was passed NULL`（每秒几十次） | AR 会话没有建立 |
-| 摄像头服务里从来没有 Fologram 的 `CONNECT` 记录 | 摄像头没被打开，扫码当然无反应 |
-| Play 商店日志 `restriction=UNAVAILABLE_DEVICE_HARDWARE` | Google 官方判定该设备不支持 ARCore |
+| ARCore repeatedly opens `ProfileDownloadActivity`, which closes immediately | Google has no device profile (calibration data) for this model; the download fails |
+| `session_lite_c_api.cc ... session was passed NULL` (dozens per second) | The AR session was never created |
+| No Fologram `CONNECT` entries in the camera service | The camera is never opened, so QR scanning does nothing |
+| Play Store log shows `restriction=UNAVAILABLE_DEVICE_HARDWARE` | Google has officially classified the device as not supporting ARCore |
 
-**原因**：ARCore 在运行时根据型号代码（`ro.product.device`）加载设备配置文件（摄像头内参、IMU 与摄像头的相对关系等）。没有配置 → 不创建会话。这一点在 Google 的 [ARCore OEM 设备认证文档](https://developers.google.com/ar/develop/device-certification) 里有说明。手动装 ARCore 不能解决这个问题。
+**Root cause**: at runtime ARCore loads a per-device profile (camera intrinsics, IMU-to-camera relationship, etc.) keyed by the model code (`ro.product.device`). No profile → no session. This is described in Google's [ARCore OEM device certification](https://developers.google.com/ar/develop/device-certification) docs. Sideloading ARCore alone cannot fix it.
 
-## 4. 调整方法：临时伪装为已认证机型（需要 root / Magisk）
+## 4. Workaround: temporarily present the device as a certified model (root / Magisk required)
 
-思路：用 Magisk 的 `resetprop` **临时**把型号、品牌、系统指纹改成某台已认证的设备，然后软重启 Android 框架，让 ARCore 加载那台设备的配置。
+Idea: use Magisk's `resetprop` to **temporarily** change the model, brand and build fingerprint to those of an ARCore-certified device, then soft-restart the Android framework so ARCore loads that device's profile.
 
-### 4.1 先读取你自己设备的摄像头参数
+### 4.1 Read your own camera parameters first
 
 ```bash
 adb push scripts/camera_info.sh /data/local/tmp/ && adb shell su -c "sh /data/local/tmp/camera_info.sh"
 ```
 
-重点看：
+Pay attention to:
 
-- **传感器朝向** `android.sensor.orientation`（90 或 270）
-- **支持的 YUV 分辨率**（`fmt 35`）
-- 焦距 / 传感器尺寸（决定视场角）
+- **Sensor orientation**: `android.sensor.orientation` (90 or 270)
+- **Supported YUV output sizes** (`fmt 35`)
+- Focal length and sensor size (these determine the field of view)
 
-### 4.2 选对"伪装对象"很关键
+### 4.2 Choosing the right device to imitate is critical
 
-在 INMO Air3（单颗 16MP 后摄、传感器朝向 **270°**、支持 4608×3456 / 4000×3000 / 1920×1080 / 640×480，**不支持** 4032×3024）上的实测结果：
+Results measured on INMO Air3: a single 16 MP rear camera, sensor orientation **270°**. It supports 4608×3456, 4000×3000, 1920×1080 and 640×480, but **not** 4032×3024.
 
-| 伪装成 | 结果 | 原因 |
+| Imitated as | Result | Reason |
 |---|---|---|
-| 只改型号，不改指纹 | ❌ 仍然下载配置失败 | ARCore 也会检查 `ro.build.fingerprint` 是否与型号一致 |
-| Pixel 6a（bluejay）+ 指纹 | ❌ 会话建立了，但摄像头配置报 `CaptureSessionErrorEvent(type=BAD_INPUT)`，每 5 秒重连 | 配置文件请求的分辨率（如 4032×3024）摄像头不支持 |
-| OnePlus 6（OnePlus6）+ 指纹 | ⚠️ 能运行，但**画面上下颠倒**，追踪不稳定 | 一加 6 后摄朝向 90°，眼镜是 270°，差 180° |
-| **Nexus 5X（bullhead）+ 指纹** | ✅ 会话正常、摄像头持续工作、可以扫码连接 | Nexus 5X 后摄同样是 **270° 倒装** |
+| Model only, fingerprint unchanged | ❌ Profile download still fails | ARCore also checks that `ro.build.fingerprint` matches the model |
+| Pixel 6a (bluejay) + fingerprint | ❌ Session is created, but camera setup fails with `CaptureSessionErrorEvent(type=BAD_INPUT)` and reconnects every 5 s | The profile requests stream sizes (e.g. 4032×3024) that the camera doesn't support |
+| OnePlus 6 (OnePlus6) + fingerprint | ⚠️ Runs, but the **image is upside down** and tracking is unstable | OnePlus 6's rear camera is mounted at 90°; the glasses use 270°, a 180° mismatch |
+| **Nexus 5X (bullhead) + fingerprint** | ✅ Session OK, camera stays open, QR scan connects | Nexus 5X's rear camera is also mounted **upside down at 270°** |
 
-**选择规则**：
-1. 传感器朝向要一致（这是画面方向和追踪是否正确的关键）；
-2. 对方配置请求的分辨率你的摄像头要支持；
-3. 必须同时修改**指纹**。
+**Selection rules**:
+1. The sensor orientation must match. This is what decides whether the image direction and tracking are correct.
+2. Every stream size the profile requests must be supported by your camera.
+3. The **fingerprint** must be changed as well.
 
-### 4.3 手动测试（重启即恢复）
+### 4.3 Manual test (undone by reboot)
 
 ```bash
 adb push scripts/spoof_nexus5x.sh /data/local/tmp/
 adb shell su -c "sh /data/local/tmp/spoof_nexus5x.sh"
-# 界面会软重启约 30 秒；之后打开 Fologram
+# The UI soft-restarts for about 30 s; then open Fologram
 ```
 
-其他候选脚本：[`spoof_oneplus6.sh`](scripts/spoof_oneplus6.sh)（适合传感器朝向 90° 的设备）。
+Another candidate: [`spoof_oneplus6.sh`](scripts/spoof_oneplus6.sh), for devices whose sensor orientation is 90°.
 
-**恢复**：直接重启设备。
+**To restore**: just reboot the device.
 
-### 4.4 Magisk 一键开关（推荐）
+### 4.4 One-tap Magisk toggle (recommended)
 
-[`magisk-module/fologram_ar_toggle`](magisk-module/fologram_ar_toggle) 是一个**开机不自动生效**的模块，只在你需要时手动开启：
+[`magisk-module/fologram_ar_toggle`](magisk-module/fologram_ar_toggle) is a module that **does nothing at boot**. You switch it on manually only when you need it:
 
-1. 打包：在 `fologram_ar_toggle` 目录内把所有文件压缩为 zip（注意 zip 内部路径要用 `/`，脚本必须是 LF 换行）。也可以用 [`scripts/build_module.sh`](scripts/build_module.sh)。
-2. Magisk → 模块 → 从本地安装 → 重启一次。
-3. 需要 AR 时：Magisk → 模块 → 「Fologram AR 临时开关」→ 点 **操作**。
-4. 想恢复原型号：重启设备。
+1. Build: zip all files inside the `fologram_ar_toggle` folder. Paths inside the zip must use `/`, and scripts must have LF line endings. You can also use [`scripts/build_module.sh`](scripts/build_module.sh).
+2. Magisk → Modules → Install from storage → reboot once.
+3. When you need AR: Magisk → Modules → "Fologram AR toggle (临时开关)" → tap **Action**.
+4. To get the original model back: reboot the device.
 
-## 5. 扫码小技巧
+## 5. QR scanning tips
 
-Fologram 扫码流程是：ARCore 会话 → `TryAcquireLatestCpuImage` 取一帧低分辨率 CPU 图像（约 640×480）→ 内置 ZXing 解码。广角眼镜摄像头下二维码在画面中很小，所以：
+Fologram's QR pipeline is: ARCore session → `TryAcquireLatestCpuImage` grabs a low-resolution CPU frame (about 640×480) → the built-in ZXing library decodes it. Through a wide-angle glasses camera the QR code covers only a small part of the frame, so:
 
-- 把 Rhino 里的二维码窗口放到最大；
-- 眼镜距屏幕约 **25–40 cm**，保持 2–3 秒不动；
-- 避免屏幕反光；
-- 即使在 iPhone 上，这个扫码对距离也比较挑剔，多试几次。
+- maximise the QR code window in Rhino;
+- keep the glasses about **25–40 cm** from the screen and hold still for 2–3 seconds;
+- avoid screen glare;
+- even on an iPhone this scanner is picky about distance, so retry a few times.
 
-## 6. 已知限制
+## 6. Known limitations
 
-- 伪装设备的校准参数（视场角、IMU-摄像头外参）与眼镜不完全一致，模型可能出现轻微漂移。
-- 伪装期间整台设备型号显示为 Nexus 5X，厂商自带应用、系统更新、Play 商店可能表现异常 —— 用完重启即可。
-- 不同固件/硬件版本的眼镜，摄像头参数可能不同，请先按 4.1 自查。
+- The imitated device's calibration (field of view, IMU-to-camera extrinsics) doesn't exactly match the glasses, so models may drift slightly.
+- While imitating, the whole device reports itself as a Nexus 5X. Vendor apps, system updates and the Play Store may misbehave until you reboot.
+- Glasses with different firmware or hardware revisions may have different camera parameters. Check them yourself with step 4.1 first.
 
-## 目录
+## Repository layout
 
 ```
 scripts/
-  install_fologram.sh   解压 XAPK 并 install-multiple
-  diag_arcore.sh        诊断 ARCore 会话/摄像头状态
-  camera_info.sh        读取摄像头朝向/分辨率/焦距
-  spoof_nexus5x.sh      临时伪装为 Nexus 5X（推荐，270° 传感器）
-  spoof_oneplus6.sh     临时伪装为 OnePlus 6（90° 传感器）
-  build_module.sh       打包 Magisk 模块
+  install_fologram.sh   extract an XAPK and install-multiple
+  diag_arcore.sh        diagnose ARCore session / camera state
+  camera_info.sh        read camera orientation / sizes / focal length
+  spoof_nexus5x.sh      temporarily imitate Nexus 5X (recommended, 270° sensor)
+  spoof_oneplus6.sh     temporarily imitate OnePlus 6 (90° sensor)
+  build_module.sh       package the Magisk module
 magisk-module/
-  fologram_ar_toggle/   Magisk「操作」按钮开关
+  fologram_ar_toggle/   Magisk "Action" button toggle
 ```
 
 ## License
 
-[MIT](LICENSE)。Fologram、ARCore、INMO 及文中提到的设备名称均为其各自所有者的商标，本项目与它们无关联。
+[MIT](LICENSE). Fologram, ARCore, INMO and the device names mentioned here are trademarks of their respective owners. This project is not affiliated with any of them.

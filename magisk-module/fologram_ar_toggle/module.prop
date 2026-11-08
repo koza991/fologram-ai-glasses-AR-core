@@ -1,0 +1,6 @@
+id=fologram_ar_toggle
+name=Fologram AR 临时开关
+version=1.0
+versionCode=1
+author=fologram-android-glasses
+description=点「操作」按钮：临时伪装为 Nexus 5X 让 ARCore 可用（界面重启约30秒）。重启设备即恢复。开机不会自动生效。

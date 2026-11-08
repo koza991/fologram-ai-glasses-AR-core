@@ -1,0 +1,9 @@
+# never commit third-party packages or personal dumps
+*.apk
+*.xapk
+*.apks
+*.zip
+*.keystore
+*.png
+*.log
+logcat*.txt
